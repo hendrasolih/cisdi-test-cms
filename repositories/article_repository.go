@@ -3,6 +3,7 @@ package repositories
 import (
 	"cisdi-test-cms/models"
 	"fmt"
+	"log"
 
 	"gorm.io/gorm"
 )
@@ -20,6 +21,10 @@ type ArticleRepository interface {
 	GetVersionByID(versionID uint) (*models.ArticleVersion, error)
 	CountTagPairs() (map[string]map[string]int, error)
 	CountArticlesByTag() (map[uint]int, error)
+	GetTagsForArticle(articleID int) ([]string, error)
+	GetTotalArticleCount() (int64, error)
+	GetArticleCountWithTag(tagName string) (int, error)
+	GetArticleCountWithTags(tag1, tag2 string) (int, error)
 }
 
 type articleRepository struct {
@@ -206,4 +211,89 @@ func (r *articleRepository) CountArticlesByTag() (map[uint]int, error) {
 	}
 
 	return counts, nil
+}
+
+func (r *articleRepository) GetTagsForArticle(articleID int) ([]string, error) {
+	var tags []string
+
+	const query = `
+		SELECT t.name
+		FROM articles a
+		JOIN article_versions av ON av.id = a.latest_version_id
+		JOIN article_version_tags avt ON avt.article_version_id = av.id
+		JOIN tags t ON t.id = avt.tag_id
+		WHERE a.id = $1
+		  AND a.deleted_at IS NULL
+		  AND av.deleted_at IS NULL
+		  AND t.deleted_at IS NULL
+		ORDER BY t.name;
+	`
+
+	err := r.db.Raw(query, articleID).Scan(&tags).Error
+	if err != nil {
+		log.Printf("error fetching tags for article %d: %v", articleID, err)
+		return nil, err
+	}
+
+	return tags, nil
+}
+
+func (r *articleRepository) GetTotalArticleCount() (int64, error) {
+	var count int64
+	err := r.db.Model(&models.Article{}).Where("deleted_at IS NULL").Count(&count).Error
+	if err != nil {
+		log.Printf("error counting total articles: %v", err)
+		return 0, err
+	}
+	return count, nil
+}
+
+func (r *articleRepository) GetArticleCountWithTag(tagName string) (int, error) {
+	var count int
+
+	const query = `
+		SELECT COUNT(DISTINCT a.id)
+		FROM articles a
+		JOIN article_versions av ON av.id = a.latest_version_id
+		JOIN article_version_tags avt ON avt.article_version_id = av.id
+		JOIN tags t ON t.id = avt.tag_id
+		WHERE t.name = $1
+		  AND a.deleted_at IS NULL
+		  AND av.deleted_at IS NULL
+		  AND t.deleted_at IS NULL;
+	`
+
+	err := r.db.Raw(query, tagName).Scan(&count).Error
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
+func (r *articleRepository) GetArticleCountWithTags(tag1, tag2 string) (int, error) {
+	var count int
+
+	const query = `
+		SELECT COUNT(DISTINCT a.id)
+		FROM articles a
+		JOIN article_versions av ON av.id = a.latest_version_id
+		JOIN article_version_tags avt1 ON avt1.article_version_id = av.id
+		JOIN tags t1 ON t1.id = avt1.tag_id
+		JOIN article_version_tags avt2 ON avt2.article_version_id = av.id
+		JOIN tags t2 ON t2.id = avt2.tag_id
+		WHERE a.deleted_at IS NULL
+		  AND av.deleted_at IS NULL
+		  AND t1.deleted_at IS NULL
+		  AND t2.deleted_at IS NULL
+		  AND t1.name = $1
+		  AND t2.name = $2;
+	`
+
+	err := r.db.Raw(query, tag1, tag2).Scan(&count).Error
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
 }

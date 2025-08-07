@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: cms_postgres
+    environment:
+      POSTGRES_DB: cms_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - cms_network
+
+  app:
+    build: .
+    container_name: cms_api
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: password
+      DB_NAME: cms_db
+      DB_SSLMODE: disable
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      PORT: 8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    networks:
+      - cms_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  cms_network:
+    driver: bridge

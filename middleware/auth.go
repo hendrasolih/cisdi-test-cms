@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"cisdi-test-cms/config"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -8,7 +10,7 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 )
 
-var jwtKey = []byte("your_secret_key")
+var jwtKey = []byte(config.JWTSecret)
 
 type Claims struct {
 	UserID   uint   `json:"user_id"`
@@ -33,6 +35,7 @@ func AuthMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+		fmt.Println("Token String:", tokenString)
 
 		claims := &Claims{}
 

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"cisdi-test-cms/config"
+	"cisdi-test-cms/middleware"
 	"cisdi-test-cms/models"
 	"cisdi-test-cms/repositories"
 
@@ -103,13 +104,15 @@ func (s *authService) GetUserByID(id uint) (*models.User, error) {
 func (s *authService) generateToken(user *models.User) (string, error) {
 	now := time.Now()
 
-	claims := jwt.MapClaims{
-		"user_id":  user.ID,
-		"username": user.Username,
-		"role":     user.Role,
-		"exp":      now.Add(config.JWTExpiration).Unix(), // waktu kedaluwarsa
-		"iat":      now.Unix(),                           // issued at
-		"nbf":      now.Unix(),                           // not before
+	claims := middleware.Claims{
+		UserID:   user.ID,
+		Username: user.Username,
+		Role:     string(user.Role),
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(now.Add(config.JWTExpiration)), // waktu kedaluwarsa
+			IssuedAt:  jwt.NewNumericDate(now),                           // issued at
+			NotBefore: jwt.NewNumericDate(now),                           // not before
+		},
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

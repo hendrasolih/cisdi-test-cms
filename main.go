@@ -8,7 +8,6 @@ import (
 	"cisdi-test-cms/config"
 	"cisdi-test-cms/handlers"
 	"cisdi-test-cms/middleware"
-	"cisdi-test-cms/models"
 	"cisdi-test-cms/repositories"
 	"cisdi-test-cms/services"
 
@@ -26,15 +25,15 @@ func main() {
 	db := config.InitDB()
 
 	// Auto migrate
-	if err := db.AutoMigrate(
-		&models.User{},
-		&models.Article{},
-		&models.ArticleVersion{},
-		&models.Tag{},
-		&models.ArticleVersionTag{},
-	); err != nil {
-		log.Fatal("Failed to migrate database:", err)
-	}
+	// if err := db.AutoMigrate(
+	// 	&models.User{},
+	// 	&models.Article{},
+	// 	&models.ArticleVersion{},
+	// 	&models.Tag{},
+	// 	&models.ArticleVersionTag{},
+	// ); err != nil {
+	// 	log.Fatal("Failed to migrate database:", err)
+	// }
 
 	// Initialize repositories
 	userRepo := repositories.NewUserRepository(db)

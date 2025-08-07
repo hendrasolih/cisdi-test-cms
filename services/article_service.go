@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"time"
 
@@ -57,7 +58,7 @@ func (s *articleService) CreateArticle(req models.CreateArticleRequest, userID u
 	}
 
 	// Calculate article tag relationship score
-	version.ArticleTagRelationshipScore = s.calculateArticleTagRelationshipScore(tags)
+	version.ArticleTagRelationshipScore = s.calculateArticleTagRelationshipScoreCreateArticle(req.Tags)
 
 	// Set article version relationships
 	article.LatestVersionID = 0 // Will be updated after creation
@@ -160,8 +161,10 @@ func (s *articleService) CreateArticleVersion(articleID uint, req models.CreateA
 		Tags:          tags,
 	}
 
+	articleIDint := int(articleID)
+
 	// Calculate article tag relationship score
-	version.ArticleTagRelationshipScore = s.calculateArticleTagRelationshipScore(tags)
+	version.ArticleTagRelationshipScore = s.calculateArticleTagRelationshipScoreCreateArticleVersion(articleIDint)
 
 	if err := s.articleRepo.CreateVersion(version); err != nil {
 		return nil, err
@@ -289,50 +292,58 @@ func (s *articleService) processTagsForVersion(tagNames []string) ([]models.Tag,
 	return tags, nil
 }
 
-func (s *articleService) calculateArticleTagRelationshipScore(tags []models.Tag) float64 {
+func (s *articleService) calculateArticleTagRelationshipScoreCreateArticle(tags []string) float64 {
 	if len(tags) < 2 {
 		return 0.0
 	}
+	for i, t := range tags {
+		fmt.Printf("Tag %d: %s\n", i+1, t)
+	}
 
-	// Get tag pair counts and individual tag counts
-	tagPairs, err := s.articleRepo.CountTagPairs()
+	countArticles, err := s.articleRepo.GetTotalArticleCount()
 	if err != nil {
+		fmt.Println("Error getting total article count:", err)
 		return 0.0
 	}
 
-	tagCounts, err := s.articleRepo.CountArticlesByTag()
-	if err != nil {
-		return 0.0
-	}
+	totalArticles := float64(countArticles)
+	scoreSum := 0.0
+	pairCount := 0
 
-	var totalScore float64
-	var pairCount int
-
-	// Calculate score for each unique pair of tags
-	for i := 0; i < len(tags); i++ {
+	for i := 0; i < len(tags)-1; i++ {
 		for j := i + 1; j < len(tags); j++ {
-			tag1Name := tags[i].Name
-			tag2Name := tags[j].Name
-
-			// Get co-occurrence count
-			coOccurrence := 0
-			if tagPairs[tag1Name] != nil {
-				coOccurrence = tagPairs[tag1Name][tag2Name]
+			tag1 := tags[i]
+			tag2 := tags[j]
+			countTag1Int, err := s.articleRepo.GetArticleCountWithTag(tag1)
+			if err != nil {
+				fmt.Println("Error getting count for tag:", tag1, err)
+				continue
+			}
+			countTag2Int, err := s.articleRepo.GetArticleCountWithTag(tag2)
+			if err != nil {
+				fmt.Println("Error getting count for tag:", tag2, err)
+				continue
+			}
+			countBothInt, err := s.articleRepo.GetArticleCountWithTags(tag1, tag2)
+			if err != nil {
+				fmt.Println("Error getting count for tag pair:", tag1, tag2, err)
+				continue
 			}
 
-			// Get individual counts
-			count1 := tagCounts[tags[i].ID]
-			count2 := tagCounts[tags[j].ID]
+			countTag1 := float64(countTag1Int)
+			countTag2 := float64(countTag2Int)
+			countBoth := float64(countBothInt)
 
-			// Calculate PMI (Pointwise Mutual Information) like score
-			if coOccurrence > 0 && count1 > 0 && count2 > 0 {
-				// Simple relationship strength calculation
-				expectedCoOccurrence := float64(count1*count2) / 1000.0 // Normalize by total articles estimation
-				if expectedCoOccurrence > 0 {
-					score := float64(coOccurrence) / expectedCoOccurrence
-					totalScore += math.Log(score)
-				}
+			if countTag1 == 0 || countTag2 == 0 || countBoth == 0 {
+				continue
 			}
+
+			pTag1 := countTag1 / totalArticles
+			pTag2 := countTag2 / totalArticles
+			pBoth := countBoth / totalArticles
+
+			pmi := math.Log(pBoth / (pTag1 * pTag2))
+			scoreSum += pmi
 			pairCount++
 		}
 	}
@@ -341,7 +352,78 @@ func (s *articleService) calculateArticleTagRelationshipScore(tags []models.Tag)
 		return 0.0
 	}
 
-	return totalScore / float64(pairCount)
+	averageScore := scoreSum / float64(pairCount)
+	return averageScore
+}
+
+// Fungsi utama: hitung skor hubungan antar tag
+func (s *articleService) calculateArticleTagRelationshipScoreCreateArticleVersion(articleID int) float64 {
+	tags, err := s.articleRepo.GetTagsForArticle(articleID)
+	if err != nil {
+		fmt.Println("Error getting tags for article:", err)
+		return 0.0
+	}
+	if len(tags) < 2 {
+		return 0.0
+	}
+	for i, t := range tags {
+		fmt.Printf("Tag %d: %s\n", i+1, t)
+	}
+
+	countArticles, err := s.articleRepo.GetTotalArticleCount()
+	if err != nil {
+		fmt.Println("Error getting total article count:", err)
+		return 0.0
+	}
+
+	totalArticles := float64(countArticles)
+	scoreSum := 0.0
+	pairCount := 0
+
+	for i := 0; i < len(tags)-1; i++ {
+		for j := i + 1; j < len(tags); j++ {
+			tag1 := tags[i]
+			tag2 := tags[j]
+			countTag1Int, err := s.articleRepo.GetArticleCountWithTag(tag1)
+			if err != nil {
+				fmt.Println("Error getting count for tag:", tag1, err)
+				continue
+			}
+			countTag2Int, err := s.articleRepo.GetArticleCountWithTag(tag2)
+			if err != nil {
+				fmt.Println("Error getting count for tag:", tag2, err)
+				continue
+			}
+			countBothInt, err := s.articleRepo.GetArticleCountWithTags(tag1, tag2)
+			if err != nil {
+				fmt.Println("Error getting count for tag pair:", tag1, tag2, err)
+				continue
+			}
+
+			countTag1 := float64(countTag1Int)
+			countTag2 := float64(countTag2Int)
+			countBoth := float64(countBothInt)
+
+			if countTag1 == 0 || countTag2 == 0 || countBoth == 0 {
+				continue
+			}
+
+			pTag1 := countTag1 / totalArticles
+			pTag2 := countTag2 / totalArticles
+			pBoth := countBoth / totalArticles
+
+			pmi := math.Log(pBoth / (pTag1 * pTag2))
+			scoreSum += pmi
+			pairCount++
+		}
+	}
+
+	if pairCount == 0 {
+		return 0.0
+	}
+
+	averageScore := scoreSum / float64(pairCount)
+	return averageScore
 }
 
 func (s *articleService) updateTagUsageCounts() {
