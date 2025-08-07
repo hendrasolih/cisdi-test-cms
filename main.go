@@ -39,10 +39,11 @@ func main() {
 	userRepo := repositories.NewUserRepository(db)
 	articleRepo := repositories.NewArticleRepository(db)
 	tagRepo := repositories.NewTagRepository(db)
+	articleVersionRepo := repositories.NewArticleVersionRepository(db)
 
 	// Initialize services
 	authService := services.NewAuthService(userRepo)
-	articleService := services.NewArticleService(articleRepo, tagRepo)
+	articleService := services.NewArticleService(articleRepo, tagRepo, articleVersionRepo)
 	tagService := services.NewTagService(tagRepo, articleRepo)
 
 	// Initialize handlers

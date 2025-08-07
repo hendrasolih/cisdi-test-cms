@@ -24,19 +24,21 @@ type ArticleService interface {
 }
 
 type articleService struct {
-	articleRepo repositories.ArticleRepository
-	tagRepo     repositories.TagRepository
+	articleRepo        repositories.ArticleRepository
+	tagRepo            repositories.TagRepository
+	articleVersionRepo repositories.ArticleVersionRepository
 }
 
-func NewArticleService(articleRepo repositories.ArticleRepository, tagRepo repositories.TagRepository) ArticleService {
+func NewArticleService(articleRepo repositories.ArticleRepository, tagRepo repositories.TagRepository, articleVersionRepo repositories.ArticleVersionRepository) ArticleService {
 	return &articleService{
-		articleRepo: articleRepo,
-		tagRepo:     tagRepo,
+		articleRepo:        articleRepo,
+		tagRepo:            tagRepo,
+		articleVersionRepo: articleVersionRepo,
 	}
 }
 
 func (s *articleService) CreateArticle(req models.CreateArticleRequest, userID uint) (*models.Article, error) {
-	// Process tags
+	// Process tags save new tags if they don't exist
 	tags, err := s.processTagsForVersion(req.Tags)
 	if err != nil {
 		return nil, err
@@ -118,6 +120,11 @@ func (s *articleService) DeleteArticle(id uint, userID uint) error {
 	// Check ownership or admin/editor role (would need role in context)
 	if article.AuthorID != userID {
 		return errors.New("unauthorized")
+	}
+
+	// Delete article versions first
+	if err := s.articleVersionRepo.DeleteVersionsByArticleID(id); err != nil {
+		return err
 	}
 
 	return s.articleRepo.Delete(id)
