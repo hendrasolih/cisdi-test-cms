@@ -62,9 +62,6 @@ func (s *articleService) CreateArticle(req models.CreateArticleRequest, userID u
 	// Calculate article tag relationship score
 	version.ArticleTagRelationshipScore = s.calculateArticleTagRelationshipScoreCreateArticle(req.Tags)
 
-	// Set article version relationships
-	article.LatestVersionID = 0 // Will be updated after creation
-
 	// Create article first, then version
 	if err := s.articleRepo.Create(article); err != nil {
 		return nil, err
@@ -82,7 +79,8 @@ func (s *articleService) CreateArticle(req models.CreateArticleRequest, userID u
 	}
 
 	// Update tag usage counts
-	s.updateTagUsageCounts()
+	// not need because article version still not published
+	// s.updateTagUsageCounts()
 
 	// Load the complete article
 	return s.articleRepo.GetByID(article.ID)
