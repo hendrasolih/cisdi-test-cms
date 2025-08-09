@@ -17,7 +17,7 @@ type ArticleRepository interface {
 	CreateVersion(version *models.ArticleVersion) error
 	GetVersions(articleID uint) ([]models.ArticleVersion, error)
 	GetVersion(articleID, versionID uint) (*models.ArticleVersion, error)
-	UpdateVersion(version *models.ArticleVersion) error
+	UpdateVersion(id uint, updates map[string]interface{}) error
 	GetVersionByID(versionID uint) (*models.ArticleVersion, error)
 	CountTagPairs() (map[string]map[string]int, error)
 	CountArticlesByTag() (map[uint]int, error)
@@ -134,8 +134,10 @@ func (r *articleRepository) GetVersion(articleID, versionID uint) (*models.Artic
 	return &version, err
 }
 
-func (r *articleRepository) UpdateVersion(version *models.ArticleVersion) error {
-	return r.db.Save(version).Error
+func (r *articleRepository) UpdateVersion(id uint, updates map[string]interface{}) error {
+	return r.db.Model(&models.ArticleVersion{}).
+		Where("id = ?", id).
+		Updates(updates).Error
 }
 
 func (r *articleRepository) GetVersionByID(versionID uint) (*models.ArticleVersion, error) {
