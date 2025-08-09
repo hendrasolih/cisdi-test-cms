@@ -194,7 +194,6 @@ func (s *articleService) UpdateVersionStatus(articleID, versionID uint, status m
 	if err != nil {
 		return err
 	}
-
 	if article.AuthorID != userID {
 		return errors.New("unauthorized")
 	}
@@ -212,10 +211,13 @@ func (s *articleService) UpdateVersionStatus(articleID, versionID uint, status m
 			currentPublished, err := s.articleRepo.GetVersionByID(*article.PublishedVersionID)
 			if err == nil {
 				currentPublished.Status = models.StatusArchivedVersion
-				s.articleRepo.UpdateVersion(currentPublished)
+				if err := s.articleRepo.UpdateVersion(currentPublished); err != nil {
+					return fmt.Errorf("failed to archive current published version: %w", err)
+				}
 			}
 		}
 
+		// Set new version as published
 		version.Status = status
 		now := time.Now()
 		version.PublishedAt = &now
@@ -223,22 +225,45 @@ func (s *articleService) UpdateVersionStatus(articleID, versionID uint, status m
 		// Update article's published version
 		article.PublishedVersionID = &version.ID
 		if err := s.articleRepo.Update(article); err != nil {
-			return err
+			return fmt.Errorf("failed to update article published version: %w", err)
 		}
-	} else {
-		version.Status = status
-		if status == models.StatusArchivedVersion && article.PublishedVersionID != nil && *article.PublishedVersionID == version.ID {
-			article.PublishedVersionID = nil
-			if err := s.articleRepo.Update(article); err != nil {
-				return err
+
+	} else if status == models.StatusArchivedVersion {
+		// If archiving the currently published version
+		if article.PublishedVersionID != nil && *article.PublishedVersionID == version.ID {
+			// This is unpublishing scenario - no published version anymore
+			fmt.Println("Archiving published version, clearing published reference")
+			if err := s.articleRepo.ClearPublishedVersionID(article.ID); err != nil {
+				return fmt.Errorf("failed to clear published version: %w", err)
 			}
 		}
+
+		version.Status = status
+		// Clear published date when archiving
+		version.PublishedAt = nil
+
+	} else {
+		// Handle other status changes (draft, etc.)
+		version.Status = status
+
+		// If this version was published and now changing to draft, clear article's published reference
+		if article.PublishedVersionID != nil && *article.PublishedVersionID == version.ID {
+			article.PublishedVersionID = nil
+			if err := s.articleRepo.Update(article); err != nil {
+				return fmt.Errorf("failed to clear published version reference: %w", err)
+			}
+		}
+	}
+
+	// Update the version
+	if err := s.articleRepo.UpdateVersion(version); err != nil {
+		return fmt.Errorf("failed to update version: %w", err)
 	}
 
 	// Update tag usage counts after status change
 	s.updateTagUsageCounts()
 
-	return s.articleRepo.UpdateVersion(version)
+	return nil
 }
 
 func (s *articleService) GetArticleVersions(articleID uint, userID uint) ([]models.ArticleVersion, error) {
@@ -432,35 +457,55 @@ func (s *articleService) calculateArticleTagRelationshipScoreCreateArticleVersio
 }
 
 func (s *articleService) updateTagUsageCounts() {
-	// This would be called after any article version status change
-	// Get all tags and their usage counts from published articles
+	// Ambil usage count dari artikel published
 	tagCounts, err := s.articleRepo.CountArticlesByTag()
 	if err != nil {
 		return
 	}
 
-	// Update all tags
+	// Ambil semua tag
 	allTags, err := s.tagRepo.GetAll()
 	if err != nil {
 		return
 	}
 
+	const decayFactor = 7.0
+	var tagsToUpdate []models.Tag
+
 	for i := range allTags {
-		if count, exists := tagCounts[allTags[i].ID]; exists {
-			allTags[i].UsageCount = count
-		} else {
-			allTags[i].UsageCount = 0
+		currentTag := &allTags[i]
+
+		// Hitung usage count baru
+		newCount := 0
+		if count, exists := tagCounts[currentTag.ID]; exists {
+			newCount = count
 		}
 
-		// Calculate trending score (simple implementation)
-		// This considers both usage count and recency
-		daysSinceCreated := time.Since(allTags[i].CreatedAt).Hours() / 24
-		if daysSinceCreated > 0 {
-			allTags[i].TrendingScore = float64(allTags[i].UsageCount) / math.Log(daysSinceCreated+1)
-		} else {
-			allTags[i].TrendingScore = float64(allTags[i].UsageCount)
+		// Hitung umur dari last update
+		ageInDays := time.Since(currentTag.UpdatedAt).Hours() / 24
+		newTrendingScore := float64(newCount) * math.Exp(-ageInDays/decayFactor)
+
+		// Cek perubahan
+		if newCount != currentTag.UsageCount || !floatAlmostEqual(newTrendingScore, currentTag.TrendingScore) {
+			currentTag.UsageCount = newCount
+			currentTag.TrendingScore = newTrendingScore
+
+			// Reset updated_at kalau ada usage baru
+			if newCount > currentTag.UsageCount {
+				currentTag.UpdatedAt = time.Now()
+			}
+
+			tagsToUpdate = append(tagsToUpdate, *currentTag)
 		}
 	}
 
-	s.tagRepo.BulkUpdate(allTags)
+	if len(tagsToUpdate) > 0 {
+		_ = s.tagRepo.BulkUpdate(tagsToUpdate)
+	}
+}
+
+// floatAlmostEqual membandingkan float agar tidak sensitif terhadap perbedaan kecil
+func floatAlmostEqual(a, b float64) bool {
+	const epsilon = 0.000001
+	return math.Abs(a-b) < epsilon
 }

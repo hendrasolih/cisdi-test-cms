@@ -25,6 +25,7 @@ type ArticleRepository interface {
 	GetTotalArticleCount() (int64, error)
 	GetArticleCountWithTag(tagName string) (int, error)
 	GetArticleCountWithTags(tag1, tag2 string) (int, error)
+	ClearPublishedVersionID(articleID uint) error
 }
 
 type articleRepository struct {
@@ -296,4 +297,8 @@ func (r *articleRepository) GetArticleCountWithTags(tag1, tag2 string) (int, err
 	}
 
 	return count, nil
+}
+
+func (r *articleRepository) ClearPublishedVersionID(articleID uint) error {
+	return r.db.Model(&models.Article{}).Where("id = ?", articleID).Update("published_version_id", nil).Error
 }
