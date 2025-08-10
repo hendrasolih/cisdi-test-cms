@@ -2,13 +2,15 @@ package middleware
 
 import (
 	"cisdi-test-cms/config"
+	"cisdi-test-cms/helper"
 	"fmt"
-	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 )
+
+var HTTPHelper = &helper.HTTPHelper{}
 
 var jwtKey = []byte(config.JWTSecret)
 
@@ -23,7 +25,7 @@ func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
+			HTTPHelper.SendUnauthorizedError(c, "Authorization header required", HTTPHelper.EmptyJsonMap())
 			c.Abort()
 			return
 		}
@@ -31,7 +33,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		// Ambil token string
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		if tokenString == authHeader {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Bearer token required"})
+			HTTPHelper.SendUnauthorizedError(c, "Bearer token required", HTTPHelper.EmptyJsonMap())
 			c.Abort()
 			return
 		}
@@ -49,13 +51,13 @@ func AuthMiddleware() gin.HandlerFunc {
 		})
 
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token: " + err.Error()})
+			HTTPHelper.SendUnauthorizedError(c, "Invalid token: "+err.Error(), HTTPHelper.EmptyJsonMap())
 			c.Abort()
 			return
 		}
 
 		if !token.Valid {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token is not valid"})
+			HTTPHelper.SendUnauthorizedError(c, "Token is not valid", HTTPHelper.EmptyJsonMap())
 			c.Abort()
 			return
 		}
@@ -73,7 +75,7 @@ func RequireRole(roles ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userRole, exists := c.Get("role")
 		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "User role not found"})
+			HTTPHelper.SendUnauthorizedError(c, "User role not found", HTTPHelper.EmptyJsonMap())
 			c.Abort()
 			return
 		}
@@ -86,7 +88,7 @@ func RequireRole(roles ...string) gin.HandlerFunc {
 			}
 		}
 
-		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
+		HTTPHelper.SendBadRequest(c, "Insufficient permissions", HTTPHelper.EmptyJsonMap())
 		c.Abort()
 	}
 }

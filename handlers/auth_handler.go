@@ -1,15 +1,16 @@
 package handlers
 
 import (
+	"cisdi-test-cms/helper"
 	"cisdi-test-cms/models"
 	"cisdi-test-cms/services"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
 
 type AuthHandler struct {
 	authService services.AuthService
+	Helper      *helper.HTTPHelper
 }
 
 func NewAuthHandler(authService services.AuthService) *AuthHandler {
@@ -19,47 +20,47 @@ func NewAuthHandler(authService services.AuthService) *AuthHandler {
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req models.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		h.Helper.SendBadRequest(c, "Error ", err.Error())
 		return
 	}
 
 	response, err := h.authService.Register(req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		h.Helper.SendBadRequest(c, "Error ", err.Error())
 		return
 	}
 
-	c.JSON(http.StatusCreated, response)
+	h.Helper.SendSuccess(c, "Register success", response)
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req models.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		h.Helper.SendBadRequest(c, "Error ", err.Error())
 		return
 	}
 
 	response, err := h.authService.Login(req)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		h.Helper.SendUnauthorizedError(c, err.Error(), h.Helper.EmptyJsonMap())
 		return
 	}
 
-	c.JSON(http.StatusOK, response)
+	h.Helper.SendSuccess(c, "Login success", response)
 }
 
 func (h *AuthHandler) GetProfile(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found in context"})
+		h.Helper.SendUnauthorizedError(c, "User not found in context", h.Helper.EmptyJsonMap())
 		return
 	}
 
 	user, err := h.authService.GetUserByID(userID.(uint))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		h.Helper.SendNotFoundError(c, "User not found", h.Helper.EmptyJsonMap())
 		return
 	}
 
-	c.JSON(http.StatusOK, user)
+	h.Helper.SendSuccess(c, "Profile loaded", user)
 }

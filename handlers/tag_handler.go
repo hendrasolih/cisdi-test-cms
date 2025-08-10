@@ -1,9 +1,9 @@
 package handlers
 
 import (
+	"cisdi-test-cms/helper"
 	"cisdi-test-cms/models"
 	"cisdi-test-cms/services"
-	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -11,6 +11,7 @@ import (
 
 type TagHandler struct {
 	tagService services.TagService
+	Helper     *helper.HTTPHelper
 }
 
 func NewTagHandler(tagService services.TagService) *TagHandler {
@@ -20,41 +21,41 @@ func NewTagHandler(tagService services.TagService) *TagHandler {
 func (h *TagHandler) CreateTag(c *gin.Context) {
 	var req models.CreateTagRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		h.Helper.SendBadRequest(c, "Error ", err.Error())
 		return
 	}
 
 	tag, err := h.tagService.CreateTag(req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		h.Helper.SendBadRequest(c, "Error ", err.Error())
 		return
 	}
 
-	c.JSON(http.StatusCreated, tag)
+	h.Helper.SendSuccess(c, "Tag created successfully", tag)
 }
 
 func (h *TagHandler) GetTags(c *gin.Context) {
 	tags, err := h.tagService.GetTags()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		h.Helper.SendBadRequest(c, "Error ", err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, tags)
+	h.Helper.SendSuccess(c, "Success", tags)
 }
 
 func (h *TagHandler) GetTag(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tag ID"})
+		h.Helper.SendBadRequest(c, "Invalid tag ID", h.Helper.EmptyJsonMap())
 		return
 	}
 
 	tag, err := h.tagService.GetTag(uint(id))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		h.Helper.SendNotFoundError(c, err.Error(), h.Helper.EmptyJsonMap())
 		return
 	}
 
-	c.JSON(http.StatusOK, tag)
+	h.Helper.SendSuccess(c, "Success", tag)
 }
