@@ -189,6 +189,7 @@ func (s *articleService) CreateArticleVersion(articleID uint, req models.CreateA
 }
 
 func (s *articleService) UpdateVersionStatus(articleID, versionID uint, status models.VersionStatus, userID uint) error {
+	fmt.Println("Updating version status: v1 ", versionID, "to", status, " for article", articleID)
 	// Check article access
 	article, err := s.articleRepo.GetByID(articleID)
 	if err != nil {
@@ -237,11 +238,13 @@ func (s *articleService) UpdateVersionStatus(articleID, versionID uint, status m
 		version.PublishedAt = &now
 
 		// Update article's published version
-		article.PublishedVersionID = &version.ID
-		if err := s.articleRepo.Update(article); err != nil {
-			return fmt.Errorf("failed to update article published version: %w", err)
+		fmt.Println("Updating version status: v2 ", versionID, "to", status, " for article", articleID)
+		articleFields := map[string]interface{}{
+			"published_version_id": versionID,
 		}
-		// aritcle.PublishedVersionID = 9
+		if err := s.articleRepo.UpdateFields(articleID, articleFields); err != nil {
+			return fmt.Errorf("failed to update article fields: %w", err)
+		}
 
 	} else if status == models.StatusArchivedVersion {
 		// If archiving the currently published version
@@ -271,8 +274,8 @@ func (s *articleService) UpdateVersionStatus(articleID, versionID uint, status m
 	}
 
 	// Update the version
-	fmt.Println("Updating version status yang disinidf 12121:", version.ID) //9
-	if err := s.articleRepo.UpdateVersion(version.ID, map[string]interface{}{
+	fmt.Println("Updating version status yang disinidf 12121:", versionID) //9
+	if err := s.articleRepo.UpdateVersion(versionID, map[string]interface{}{
 		"status":       version.Status,
 		"published_at": version.PublishedAt,
 	}); err != nil {

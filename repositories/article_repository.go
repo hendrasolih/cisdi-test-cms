@@ -26,6 +26,7 @@ type ArticleRepository interface {
 	GetArticleCountWithTag(tagName string) (int, error)
 	GetArticleCountWithTags(tag1, tag2 string) (int, error)
 	ClearPublishedVersionID(articleID uint) error
+	UpdateFields(id uint, fields map[string]interface{}) error
 }
 
 type articleRepository struct {
@@ -109,6 +110,13 @@ func (r *articleRepository) Update(article *models.Article) error {
 	return r.db.Save(article).Error
 }
 
+func (r *articleRepository) UpdateFields(id uint, fields map[string]interface{}) error {
+	return r.db.Model(&models.Article{}).
+		Where("id = ?", id).
+		Updates(fields).
+		Error
+}
+
 func (r *articleRepository) Delete(id uint) error {
 	return r.db.Delete(&models.Article{}, id).Error
 }
@@ -135,6 +143,7 @@ func (r *articleRepository) GetVersion(articleID, versionID uint) (*models.Artic
 }
 
 func (r *articleRepository) UpdateVersion(id uint, updates map[string]interface{}) error {
+	fmt.Println("Updating version with ID:", id, "with updates:", updates)
 	return r.db.Model(&models.ArticleVersion{}).
 		Where("id = ?", id).
 		Updates(updates).Error
