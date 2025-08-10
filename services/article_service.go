@@ -175,7 +175,7 @@ func (s *articleService) CreateArticleVersion(articleID uint, req models.CreateA
 	articleIDint := int(articleID)
 
 	// Calculate article tag relationship score
-	version.ArticleTagRelationshipScore = s.calculateArticleTagRelationshipScoreCreateArticleVersion(articleIDint)
+	version.ArticleTagRelationshipScore = s.CalculateTagRelationshipScore(articleIDint)
 
 	if err := s.articleRepo.CreateVersion(version); err != nil {
 		return nil, err
