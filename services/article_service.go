@@ -208,16 +208,11 @@ func (s *articleService) UpdateVersionStatus(articleID, versionID uint, status m
 	// Handle status changes
 	if status == models.StatusPublished {
 		// If publishing this version, unpublish any currently published version
-		fmt.Println("article.PublishedVersionID:", *article.PublishedVersionID) // 10
-		fmt.Println("version.ID:", version.ID)                                  // 9
 		if article.PublishedVersionID != nil && *article.PublishedVersionID != version.ID {
-			fmt.Println("Unpublishing previous version before publishing new one")
 			currentPublished, err := s.articleRepo.GetVersionByID(*article.PublishedVersionID)
 			if err != nil {
 				return fmt.Errorf("failed to get current published version: %w", err)
 			} else {
-				fmt.Println("Current published version:", currentPublished.ID)
-				fmt.Println("model.StatusArchivedVersion:", models.StatusArchivedVersion)
 				if err = s.articleRepo.UpdateVersion(
 					currentPublished.ID,
 					map[string]interface{}{
@@ -227,9 +222,7 @@ func (s *articleService) UpdateVersionStatus(articleID, versionID uint, status m
 					return fmt.Errorf("failed to archive current published version: %w", err)
 				}
 				// 10 updated to archived
-
 			}
-
 		}
 
 		// Set new version as published
@@ -238,7 +231,6 @@ func (s *articleService) UpdateVersionStatus(articleID, versionID uint, status m
 		version.PublishedAt = &now
 
 		// Update article's published version
-		fmt.Println("Updating version status: v2 ", versionID, "to", status, " for article", articleID)
 		articleFields := map[string]interface{}{
 			"published_version_id": versionID,
 		}
@@ -250,7 +242,6 @@ func (s *articleService) UpdateVersionStatus(articleID, versionID uint, status m
 		// If archiving the currently published version
 		if article.PublishedVersionID != nil && *article.PublishedVersionID == version.ID {
 			// This is unpublishing scenario - no published version anymore
-			fmt.Println("Archiving published version, clearing published reference")
 			if err := s.articleRepo.ClearPublishedVersionID(article.ID); err != nil {
 				return fmt.Errorf("failed to clear published version: %w", err)
 			}
@@ -274,7 +265,6 @@ func (s *articleService) UpdateVersionStatus(articleID, versionID uint, status m
 	}
 
 	// Update the version
-	fmt.Println("Updating version status yang disinidf 12121:", versionID) //9
 	if err := s.articleRepo.UpdateVersion(versionID, map[string]interface{}{
 		"status":       version.Status,
 		"published_at": version.PublishedAt,
