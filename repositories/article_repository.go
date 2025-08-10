@@ -4,12 +4,14 @@ import (
 	"cisdi-test-cms/models"
 	"fmt"
 	"log"
+	"strings"
+	"time"
 
 	"gorm.io/gorm"
 )
 
 type ArticleRepository interface {
-	Create(article *models.Article) error
+	Create(article *models.Article) (*models.Article, error)
 	GetByID(id uint) (*models.Article, error)
 	GetList(params models.ArticleListParams, isPublic bool) ([]models.Article, int64, error)
 	Update(article *models.Article) error
@@ -27,6 +29,8 @@ type ArticleRepository interface {
 	GetArticleCountWithTags(tag1, tag2 string) (int, error)
 	ClearPublishedVersionID(articleID uint) error
 	UpdateFields(id uint, fields map[string]interface{}) error
+	GetTagFrequencies(tagNames []string) (map[string]int, error)
+	GetTagPairCoOccurrences(tagNames []string) (map[string]int, error)
 }
 
 type articleRepository struct {
@@ -37,8 +41,11 @@ func NewArticleRepository(db *gorm.DB) ArticleRepository {
 	return &articleRepository{db: db}
 }
 
-func (r *articleRepository) Create(article *models.Article) error {
-	return r.db.Create(article).Error
+func (r *articleRepository) Create(article *models.Article) (*models.Article, error) {
+	if err := r.db.Create(article).Error; err != nil {
+		return nil, err
+	}
+	return article, nil
 }
 
 func (r *articleRepository) GetByID(id uint) (*models.Article, error) {
@@ -312,4 +319,116 @@ func (r *articleRepository) GetArticleCountWithTags(tag1, tag2 string) (int, err
 
 func (r *articleRepository) ClearPublishedVersionID(articleID uint) error {
 	return r.db.Model(&models.Article{}).Where("id = ?", articleID).Update("published_version_id", nil).Error
+}
+
+type TagCheckRow struct {
+	ArticleID      int
+	VersionID      int
+	TagID          int
+	TagName        string
+	ArticleDeleted *time.Time
+	VersionDeleted *time.Time
+	TagDeleted     *time.Time
+}
+
+func (r *articleRepository) GetTagFrequencies(tagNames []string) (map[string]int, error) {
+	result := make(map[string]int)
+
+	// Kalau tagNames kosong langsung return
+	if len(tagNames) == 0 {
+		return result, nil
+	}
+
+	// Buat placeholder ?,?,? sesuai jumlah tagNames
+	placeholders := strings.Repeat("?,", len(tagNames))
+	placeholders = strings.TrimRight(placeholders, ",")
+
+	// Konversi []string ke []interface{} agar bisa di-spread di Raw()
+	args := make([]interface{}, len(tagNames))
+	for i, v := range tagNames {
+		args[i] = v
+	}
+
+	// Susun query final
+	query := fmt.Sprintf(`
+		SELECT t.name, COUNT(DISTINCT a.id) AS freq
+		FROM articles a
+		JOIN article_versions av ON av.id = a.latest_version_id
+		JOIN article_version_tags avt ON avt.article_version_id = av.id
+		JOIN tags t ON t.id = avt.tag_id
+		WHERE t.name IN (%s)
+		  AND a.deleted_at IS NULL
+		  AND av.deleted_at IS NULL
+		  AND t.deleted_at IS NULL
+		GROUP BY t.name
+	`, placeholders)
+
+	// Logging untuk debug
+	log.Printf("[DEBUG] GetTagFrequencies query:\n%s\nArgs: %#v\n", query, args)
+
+	// Jalankan query
+	rows, err := r.db.Raw(query, args...).Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Scan hasil ke map
+	for rows.Next() {
+		var name string
+		var freq int
+		if err := rows.Scan(&name, &freq); err != nil {
+			return nil, err
+		}
+		result[name] = freq
+	}
+
+	// Logging hasil untuk debug
+	log.Printf("[DEBUG] GetTagFrequencies result: %#v\n", result)
+
+	return result, nil
+}
+
+// GetTagPairCoOccurrences - ambil co-occurrence semua pasangan dalam 1 query
+func (r *articleRepository) GetTagPairCoOccurrences(tagNames []string) (map[string]int, error) {
+	result := make(map[string]int)
+	if len(tagNames) < 2 {
+		return result, nil
+	}
+
+	query := `
+		SELECT LEAST(t1.name, t2.name) AS tag1,
+		       GREATEST(t1.name, t2.name) AS tag2,
+		       COUNT(DISTINCT a.id) AS freq
+		FROM articles a
+		JOIN article_versions av ON av.id = a.latest_version_id
+		JOIN article_version_tags avt1 ON avt1.article_version_id = av.id
+		JOIN tags t1 ON t1.id = avt1.tag_id
+		JOIN article_version_tags avt2 ON avt2.article_version_id = av.id
+		JOIN tags t2 ON t2.id = avt2.tag_id
+		WHERE t1.name IN (?) 
+		  AND t2.name IN (?) 
+		  AND t1.name <> t2.name
+		  AND a.deleted_at IS NULL
+		  AND av.deleted_at IS NULL
+		  AND t1.deleted_at IS NULL
+		  AND t2.deleted_at IS NULL
+		GROUP BY tag1, tag2
+	`
+	rows, err := r.db.Raw(query, tagNames, tagNames).Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var tag1, tag2 string
+		var freq int
+		if err := rows.Scan(&tag1, &tag2, &freq); err != nil {
+			return nil, err
+		}
+		result[tag1+"|"+tag2] = freq
+	}
+
+	return result, nil
 }
