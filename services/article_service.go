@@ -207,8 +207,8 @@ func (s *articleService) UpdateVersionStatus(articleID, versionID uint, status m
 	// Handle status changes
 	if status == models.StatusPublished {
 		// If publishing this version, unpublish any currently published version
-		fmt.Println("article.PublishedVersionID:", *article.PublishedVersionID)
-		fmt.Println("version.ID:", version.ID)
+		fmt.Println("article.PublishedVersionID:", *article.PublishedVersionID) // 10
+		fmt.Println("version.ID:", version.ID)                                  // 9
 		if article.PublishedVersionID != nil && *article.PublishedVersionID != version.ID {
 			fmt.Println("Unpublishing previous version before publishing new one")
 			currentPublished, err := s.articleRepo.GetVersionByID(*article.PublishedVersionID)
@@ -225,6 +225,7 @@ func (s *articleService) UpdateVersionStatus(articleID, versionID uint, status m
 				); err != nil {
 					return fmt.Errorf("failed to archive current published version: %w", err)
 				}
+				// 10 updated to archived
 
 			}
 
@@ -240,6 +241,7 @@ func (s *articleService) UpdateVersionStatus(articleID, versionID uint, status m
 		if err := s.articleRepo.Update(article); err != nil {
 			return fmt.Errorf("failed to update article published version: %w", err)
 		}
+		// aritcle.PublishedVersionID = 9
 
 	} else if status == models.StatusArchivedVersion {
 		// If archiving the currently published version
@@ -269,6 +271,7 @@ func (s *articleService) UpdateVersionStatus(articleID, versionID uint, status m
 	}
 
 	// Update the version
+	fmt.Println("Updating version status yang disinidf 12121:", version.ID) //9
 	if err := s.articleRepo.UpdateVersion(version.ID, map[string]interface{}{
 		"status":       version.Status,
 		"published_at": version.PublishedAt,

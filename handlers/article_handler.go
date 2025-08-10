@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"cisdi-test-cms/helper"
 	"cisdi-test-cms/models"
 	"cisdi-test-cms/services"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 
 type ArticleHandler struct {
 	articleService services.ArticleService
+	Helper         *helper.HTTPHelper
 }
 
 func NewArticleHandler(articleService services.ArticleService) *ArticleHandler {
@@ -171,28 +173,28 @@ func (h *ArticleHandler) UpdateVersionStatus(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	articleID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid article ID"})
+		h.Helper.SendBadRequest(c, "Invalid article ID", h.Helper.EmptyJsonMap())
 		return
 	}
 
 	versionID, err := strconv.ParseUint(c.Param("version_id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid version ID"})
+		h.Helper.SendBadRequest(c, "Invalid version ID", h.Helper.EmptyJsonMap())
 		return
 	}
 
 	var req models.UpdateVersionStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		h.Helper.SendBadRequest(c, "Invalid request data", h.Helper.EmptyJsonMap())
 		return
 	}
 
 	if err := h.articleService.UpdateVersionStatus(uint(articleID), uint(versionID), req.Status, userID.(uint)); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		h.Helper.SendBadRequest(c, err.Error(), h.Helper.EmptyJsonMap())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Version status updated successfully"})
+	h.Helper.SendResponse(h.Helper.SetResponse(c, "success", "Version status updated successfully", h.Helper.EmptyJsonMap(), http.StatusOK, "success"))
 }
 
 func (h *ArticleHandler) GetArticleVersions(c *gin.Context) {

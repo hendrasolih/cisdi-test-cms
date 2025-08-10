@@ -24,17 +24,6 @@ func main() {
 	// Initialize database
 	db := config.InitDB()
 
-	// Auto migrate
-	// if err := db.AutoMigrate(
-	// 	&models.User{},
-	// 	&models.Article{},
-	// 	&models.ArticleVersion{},
-	// 	&models.Tag{},
-	// 	&models.ArticleVersionTag{},
-	// ); err != nil {
-	// 	log.Fatal("Failed to migrate database:", err)
-	// }
-
 	// Initialize repositories
 	userRepo := repositories.NewUserRepository(db)
 	articleRepo := repositories.NewArticleRepository(db)
