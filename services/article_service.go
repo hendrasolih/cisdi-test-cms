@@ -59,11 +59,8 @@ func (s *articleService) CreateArticle(req models.CreateArticleRequest, userID u
 		Tags:          tags,
 	}
 
-	// Calculate article tag relationship score
-	version.ArticleTagRelationshipScore = s.calculateArticleTagRelationshipScoreCreateArticle(req.Tags)
-
 	// Create article first, then version
-	if err := s.articleRepo.Create(article); err != nil {
+	if _, err := s.articleRepo.Create(article); err != nil {
 		return nil, err
 	}
 
@@ -78,9 +75,18 @@ func (s *articleService) CreateArticle(req models.CreateArticleRequest, userID u
 		return nil, err
 	}
 
-	// Update tag usage counts
-	// not need because article version still not published
-	// s.updateTagUsageCounts()
+	// Calculate article tag relationship score
+	fmt.Println("Calculating tag relationship score for article ID:", article.ID)
+	score := s.CalculateTagRelationshipScore(int(article.ID))
+	fmt.Println("Calculated score:", score)
+
+	// Update article with tag relationship score
+	err = s.articleRepo.UpdateVersion(version.ID, map[string]interface{}{
+		"article_tag_relationship_score": score,
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	// Load the complete article
 	return s.articleRepo.GetByID(article.ID)
@@ -334,57 +340,91 @@ func (s *articleService) processTagsForVersion(tagNames []string) ([]models.Tag,
 	return tags, nil
 }
 
-func (s *articleService) calculateArticleTagRelationshipScoreCreateArticle(tags []string) float64 {
+func (s *articleService) CalculateTagRelationshipScore(articleID int) float64 {
+	// 1. Ambil semua tag dari artikel ini
+	tags, err := s.articleRepo.GetTagsForArticle(articleID)
+	if err != nil {
+		fmt.Println("Error getting tags for article:", err)
+		return 0.0
+	}
 	if len(tags) < 2 {
 		return 0.0
 	}
-	for i, t := range tags {
-		fmt.Printf("Tag %d: %s\n", i+1, t)
-	}
+	fmt.Println("Tags for article:", tags)
 
-	countArticles, err := s.articleRepo.GetTotalArticleCount()
+	// 2. Ambil total artikel
+	totalArticles, err := s.articleRepo.GetTotalArticleCount()
 	if err != nil {
 		fmt.Println("Error getting total article count:", err)
 		return 0.0
 	}
+	totalArticlesF := float64(totalArticles)
+	fmt.Printf("Total articles: %d (float: %.0f)\n", totalArticles, totalArticlesF)
 
-	totalArticles := float64(countArticles)
+	// 3. Ambil frekuensi semua tag
+	tagFreq, err := s.articleRepo.GetTagFrequencies(tags)
+	if err != nil {
+		fmt.Println("Error getting tag frequencies:", err)
+		return 0.0
+	}
+	fmt.Println("Tag frequencies:", tagFreq)
+
+	// 4. Ambil co-occurrence semua pasangan tag
+	coOccurMap, err := s.articleRepo.GetTagPairCoOccurrences(tags)
+	if err != nil {
+		fmt.Println("Error getting tag pair co-occurrences:", err)
+		return 0.0
+	}
+	fmt.Println("Co-occurrence map:", coOccurMap)
+
+	// 5. Hitung skor
 	scoreSum := 0.0
 	pairCount := 0
+
+	// helper untuk urutkan tag sesuai LEAST/GREATEST
+	minString := func(a, b string) string {
+		if a < b {
+			return a
+		}
+		return b
+	}
+	maxString := func(a, b string) string {
+		if a > b {
+			return a
+		}
+		return b
+	}
 
 	for i := 0; i < len(tags)-1; i++ {
 		for j := i + 1; j < len(tags); j++ {
 			tag1 := tags[i]
 			tag2 := tags[j]
-			countTag1Int, err := s.articleRepo.GetArticleCountWithTag(tag1)
-			if err != nil {
-				fmt.Println("Error getting count for tag:", tag1, err)
-				continue
-			}
-			countTag2Int, err := s.articleRepo.GetArticleCountWithTag(tag2)
-			if err != nil {
-				fmt.Println("Error getting count for tag:", tag2, err)
-				continue
-			}
-			countBothInt, err := s.articleRepo.GetArticleCountWithTags(tag1, tag2)
-			if err != nil {
-				fmt.Println("Error getting count for tag pair:", tag1, tag2, err)
+
+			// Pastikan key cocok
+			key := fmt.Sprintf("%s|%s", minString(tag1, tag2), maxString(tag1, tag2))
+			freqA := float64(tagFreq[tag1])
+			freqB := float64(tagFreq[tag2])
+			coOccur := float64(coOccurMap[key])
+
+			// Debug semua data
+			fmt.Printf("Pair: %-10s & %-10s | freqA=%-4.0f freqB=%-4.0f coOccur=%-4.0f\n",
+				tag1, tag2, freqA, freqB, coOccur)
+
+			if freqA == 0 || freqB == 0 || coOccur == 0 {
 				continue
 			}
 
-			countTag1 := float64(countTag1Int)
-			countTag2 := float64(countTag2Int)
-			countBoth := float64(countBothInt)
-
-			if countTag1 == 0 || countTag2 == 0 || countBoth == 0 {
-				continue
-			}
-
-			pTag1 := countTag1 / totalArticles
-			pTag2 := countTag2 / totalArticles
-			pBoth := countBoth / totalArticles
+			pTag1 := freqA / totalArticlesF
+			pTag2 := freqB / totalArticlesF
+			pBoth := coOccur / totalArticlesF
 
 			pmi := math.Log(pBoth / (pTag1 * pTag2))
+
+			// Kalau mau Positive PMI aktifkan ini:
+			// if pmi < 0 { pmi = 0 }
+
+			fmt.Printf("  -> pTag1=%.4f pTag2=%.4f pBoth=%.4f PMI=%.4f\n", pTag1, pTag2, pBoth, pmi)
+
 			scoreSum += pmi
 			pairCount++
 		}
@@ -393,9 +433,8 @@ func (s *articleService) calculateArticleTagRelationshipScoreCreateArticle(tags 
 	if pairCount == 0 {
 		return 0.0
 	}
-
-	averageScore := scoreSum / float64(pairCount)
-	return averageScore
+	fmt.Printf("Pair count: %d | Score sum: %.4f | Final score: %.4f\n", pairCount, scoreSum, scoreSum/float64(pairCount))
+	return scoreSum / float64(pairCount)
 }
 
 // Fungsi utama: hitung skor hubungan antar tag
