@@ -176,9 +176,9 @@ func (s *articleService) CreateArticleVersion(articleID uint, req models.CreateA
 	}
 
 	// Update article's latest version
-	article.LatestVersionID = version.ID
-	article.Title = req.Title // Update article title to match latest version
-	if err := s.articleRepo.Update(article); err != nil {
+	if err := s.articleRepo.UpdateFields(articleID, map[string]interface{}{
+		"latest_version_id": version.ID,
+	}); err != nil {
 		return nil, err
 	}
 
