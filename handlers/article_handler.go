@@ -39,19 +39,53 @@ func (h *ArticleHandler) CreateArticle(c *gin.Context) {
 
 func (h *ArticleHandler) GetArticles(c *gin.Context) {
 	userID, _ := c.Get("user_id")
+	role, _ := c.Get("role")
 
-	var params models.ArticleListParams
-	if err := c.ShouldBindQuery(&params); err != nil {
-		h.Helper.SendBadRequest(c, "Invalid request data : ", err.Error())
-		return
+	// Ambil parameter query
+	status := c.DefaultQuery("status", "published")
+	authorIDStr := c.Query("author_id")
+	tagIDStr := c.Query("tag_id")
+	sortBy := c.DefaultQuery("sort_by", "published_at")
+	sortOrder := c.DefaultQuery("sort_order", "desc")
+	pageStr := c.DefaultQuery("page", "1")
+	limitStr := c.DefaultQuery("limit", "10")
+
+	// Konversi parameter
+	page, _ := strconv.Atoi(pageStr)
+	limit, _ := strconv.Atoi(limitStr)
+	authorID := uint(0)
+	if authorIDStr != "" {
+		aid, err := strconv.ParseUint(authorIDStr, 10, 32)
+		if err == nil {
+			authorID = uint(aid)
+		}
+	}
+	tagID := uint(0)
+	if tagIDStr != "" {
+		tid, err := strconv.ParseUint(tagIDStr, 10, 32)
+		if err == nil {
+			tagID = uint(tid)
+		}
 	}
 
-	// Set defaults
-	if params.Page == 0 {
-		params.Page = 1
+	// Siapkan params
+	params := models.ArticleListParams{
+		Status:    status,
+		AuthorID:  authorID,
+		TagID:     tagID,
+		Page:      page,
+		Limit:     limit,
+		SortBy:    sortBy,
+		SortOrder: sortOrder,
 	}
-	if params.Limit == 0 {
-		params.Limit = 10
+
+	// Role-based access: jika bukan admin/editor, hanya bisa akses milik sendiri atau yang published
+	isAdmin := role == "admin" || role == "editor"
+	if !isAdmin {
+		// Jika status bukan published, hanya boleh akses milik sendiri
+		if status != "published" {
+			params.AuthorID = userID.(uint)
+		}
 	}
 
 	articles, total, err := h.articleService.GetArticles(params, userID.(uint), false)

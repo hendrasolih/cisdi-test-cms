@@ -57,22 +57,50 @@ func (r *articleRepository) GetByID(id uint) (*models.Article, error) {
 	return &article, err
 }
 
+// GetList mengambil daftar artikel dengan filter dan pagination sesuai params.
+// Fungsi ini meng-handle dua mode utama:
+// 1. Public mode (isPublic == true):
+//    - Mengambil artikel yang sudah dipublikasikan,
+//      yaitu artikel yang memiliki published_version_id dengan status "published".
+//    - Menggunakan join ke tabel article_versions dengan alias av_pub pada published_version_id.
+//    - Mengabaikan status versi terbaru (latest_version_id) yang bisa jadi masih draft.
+// 2. Non-public mode (isPublic == false):
+//    - Jika params.Status adalah "published", cari artikel berdasarkan published_version_id dan status published.
+//    - Jika params.Status selain "published", cari artikel berdasarkan latest_version_id dengan status yang diberikan.
+//    - Jika tidak ada status filter, join ke latest_version_id hanya jika perlu (misal sorting berdasarkan skor atau filter tag).
+//
+// Selain itu, fungsi ini juga menangani:
+// - Filter berdasarkan AuthorID dan TagID, dengan join ke tabel tag yang sesuai alias article_versions yang aktif (av_pub atau av_lat).
+// - Sorting berdasarkan field yang diminta, termasuk field khusus seperti article_tag_relationship_score.
+// - Pagination dengan limit dan offset.
+// - Debug print query SQL sebelum dijalankan untuk membantu proses debugging.
 func (r *articleRepository) GetList(params models.ArticleListParams, isPublic bool) ([]models.Article, int64, error) {
 	var articles []models.Article
 	var total int64
 
-	query := r.db.Model(&models.Article{}).Preload("Author").Preload("LatestVersion.Tags")
+	query := r.db.Model(&models.Article{}).
+		Preload("Author").
+		Preload("LatestVersion.Tags")
 
-	// Add public filter
 	if isPublic {
-		query = query.Joins("JOIN article_versions ON articles.published_version_id = article_versions.id").
-			Where("article_versions.status = ?", models.StatusPublished)
-	}
-
-	// Add filters
-	if params.Status != "" && !isPublic {
-		query = query.Joins("JOIN article_versions ON articles.latest_version_id = article_versions.id").
-			Where("article_versions.status = ?", params.Status)
+		// Public mode: hanya tampilkan artikel yang sudah published (published_version_id)
+		query = query.Joins("JOIN article_versions av_pub ON articles.published_version_id = av_pub.id").
+			Where("av_pub.status = ?", models.StatusPublished)
+	} else {
+		if params.Status == string(models.StatusPublished) {
+			// Kalau status published, join ke published_version_id
+			query = query.Joins("JOIN article_versions av_pub ON articles.published_version_id = av_pub.id").
+				Where("av_pub.status = ?", models.StatusPublished)
+		} else if params.Status != "" {
+			// Kalau status selain published, join ke latest_version_id
+			query = query.Joins("JOIN article_versions av_lat ON articles.latest_version_id = av_lat.id").
+				Where("av_lat.status = ?", params.Status)
+		} else {
+			// Kalau tidak ada status filter, join latest_version_id jika perlu sorting atau filter tag
+			if params.SortBy == "article_tag_relationship_score" || params.TagID > 0 {
+				query = query.Joins("JOIN article_versions av_lat ON articles.latest_version_id = av_lat.id")
+			}
+		}
 	}
 
 	if params.AuthorID > 0 {
@@ -80,15 +108,18 @@ func (r *articleRepository) GetList(params models.ArticleListParams, isPublic bo
 	}
 
 	if params.TagID > 0 {
-		query = query.Joins("JOIN article_versions ON articles.latest_version_id = article_versions.id").
-			Joins("JOIN article_version_tags ON article_versions.id = article_version_tags.article_version_id").
-			Where("article_version_tags.tag_id = ?", params.TagID)
+		// Pakai alias sesuai join yang aktif
+		if params.Status == string(models.StatusPublished) || isPublic {
+			query = query.Joins("JOIN article_version_tags avt ON av_pub.id = avt.article_version_id").
+				Where("avt.tag_id = ?", params.TagID)
+		} else {
+			query = query.Joins("JOIN article_version_tags avt ON av_lat.id = avt.article_version_id").
+				Where("avt.tag_id = ?", params.TagID)
+		}
 	}
 
-	// Count total
 	query.Count(&total)
 
-	// Add sorting
 	sortBy := params.SortBy
 	if sortBy == "" {
 		sortBy = "created_at"
@@ -100,15 +131,23 @@ func (r *articleRepository) GetList(params models.ArticleListParams, isPublic bo
 	}
 
 	if sortBy == "article_tag_relationship_score" {
-		query = query.Joins("JOIN article_versions ON articles.latest_version_id = article_versions.id").
-			Order(fmt.Sprintf("article_versions.article_tag_relationship_score %s", sortOrder))
+		if params.Status == string(models.StatusPublished) || isPublic {
+			query = query.Order(fmt.Sprintf("av_pub.article_tag_relationship_score %s", sortOrder))
+		} else {
+			query = query.Order(fmt.Sprintf("av_lat.article_tag_relationship_score %s", sortOrder))
+		}
 	} else {
 		query = query.Order(fmt.Sprintf("articles.%s %s", sortBy, sortOrder))
 	}
 
-	// Add pagination
 	offset := (params.Page - 1) * params.Limit
-	err := query.Offset(offset).Limit(params.Limit).Find(&articles).Error
+
+	// Debug SQL
+	stmt := query.Session(&gorm.Session{DryRun: true}).Offset(offset).Limit(params.Limit).Find(&articles).Statement
+	fmt.Println("SQL:", stmt.SQL.String())
+	fmt.Println("Vars:", stmt.Vars)
+
+	err := query.Debug().Offset(offset).Limit(params.Limit).Find(&articles).Error
 
 	return articles, total, err
 }
