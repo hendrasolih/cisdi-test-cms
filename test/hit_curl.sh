@@ -7,9 +7,10 @@ TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJ1c2VybmFtZSI6Impv
 TAGS_LIST=(
     '["javascript", "frontend", "react"]'
     '["go", "backend", "api"]'
-    '["python", "data-science", "machine-learning"]'
+    '["go", "backend", "machine-learning"]'
     '["java", "spring", "microservices"]'
-    '["rust", "systems", "performance"]'
+    '["rust", "backend", "api"]'
+    '["go", "backend", "microservices"]'
 )
 
 # Loop setiap set tags
