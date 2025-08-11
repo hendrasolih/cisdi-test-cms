@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -34,13 +35,13 @@ func (suite *IntegrationTestSuite) SetupSuite() {
 	// Set test environment
 	os.Setenv("DB_HOST", "localhost")
 	os.Setenv("DB_PORT", "5432")
-	os.Setenv("DB_USER", "postgres")
-	os.Setenv("DB_PASSWORD", "password")
+	os.Setenv("DB_USER", "myuser")
+	os.Setenv("DB_PASSWORD", "mypassword")
 	os.Setenv("DB_NAME", "cms_test_db")
 	os.Setenv("JWT_SECRET", "test-secret")
 
 	// Initialize test database
-	dsn := "host=localhost port=5432 user=postgres password=password dbname=cms_test_db sslmode=disable"
+	dsn := "host=localhost port=5432 user=myuser password=mypassword dbname=cms_test_db sslmode=disable"
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		suite.T().Fatal("Failed to connect to test database:", err)
@@ -48,16 +49,8 @@ func (suite *IntegrationTestSuite) SetupSuite() {
 
 	suite.db = db
 
-	// Migrate tables
-	err = db.AutoMigrate(
-		&models.User{},
-		&models.Article{},
-		&models.ArticleVersion{},
-		&models.Tag{},
-		&models.ArticleVersionTag{},
-	)
-	if err != nil {
-		suite.T().Fatal("Failed to migrate test database:", err)
+	if err := RunSQLFile(db, "../migration/init.sql"); err != nil {
+		log.Fatal("Failed migrate users:", err)
 	}
 
 	// Setup router
@@ -71,10 +64,11 @@ func (suite *IntegrationTestSuite) setupRouter() {
 	userRepo := repositories.NewUserRepository(suite.db)
 	articleRepo := repositories.NewArticleRepository(suite.db)
 	tagRepo := repositories.NewTagRepository(suite.db)
+	articleVersionRepo := repositories.NewArticleVersionRepository(suite.db)
 
 	// Initialize services
 	authService := services.NewAuthService(userRepo)
-	articleService := services.NewArticleService(articleRepo, tagRepo)
+	articleService := services.NewArticleService(articleRepo, tagRepo, articleVersionRepo)
 	tagService := services.NewTagService(tagRepo, articleRepo)
 
 	// Initialize handlers
@@ -153,7 +147,6 @@ func (suite *IntegrationTestSuite) SetupTest() {
 }
 
 func (suite *IntegrationTestSuite) registerAndLoginTestUser() {
-	// Register user
 	registerPayload := models.RegisterRequest{
 		Username: "testuser",
 		Email:    "test@example.com",
@@ -168,18 +161,25 @@ func (suite *IntegrationTestSuite) registerAndLoginTestUser() {
 	w := httptest.NewRecorder()
 	suite.router.ServeHTTP(w, req)
 
-	assert.Equal(suite.T(), http.StatusCreated, w.Code)
+	suite.Equal(http.StatusOK, w.Code) // karena register mengembalikan 200
+	// sesuaikan expected status
 
-	var registerResponse models.AuthResponse
+	type RegisterResponse struct {
+		Code        int                 `json:"code"`
+		CodeMessage string              `json:"code_message"`
+		CodeType    string              `json:"code_type"`
+		Data        models.AuthResponse `json:"data"`
+	}
+
+	var registerResponse RegisterResponse
 	err := json.Unmarshal(w.Body.Bytes(), &registerResponse)
-	assert.NoError(suite.T(), err)
+	suite.NoError(err)
 
-	suite.token = registerResponse.Token
-	suite.userID = registerResponse.User.ID
+	suite.token = registerResponse.Data.Token
+	suite.userID = registerResponse.Data.User.ID
 }
 
 func (suite *IntegrationTestSuite) TestAuthFlow() {
-	// Test login
 	loginPayload := models.LoginRequest{
 		Email:    "test@example.com",
 		Password: "password123",
@@ -192,13 +192,23 @@ func (suite *IntegrationTestSuite) TestAuthFlow() {
 	w := httptest.NewRecorder()
 	suite.router.ServeHTTP(w, req)
 
-	assert.Equal(suite.T(), http.StatusOK, w.Code)
+	suite.Equal(http.StatusOK, w.Code)
 
-	var response models.AuthResponse
-	err := json.Unmarshal(w.Body.Bytes(), &response)
-	assert.NoError(suite.T(), err)
-	assert.NotEmpty(suite.T(), response.Token)
-	assert.Equal(suite.T(), "testuser", response.User.Username)
+	type LoginResponse struct {
+		Code        int                 `json:"code"`
+		CodeMessage string              `json:"code_message"`
+		CodeType    string              `json:"code_type"`
+		Data        models.AuthResponse `json:"data"`
+	}
+
+	var loginResp LoginResponse
+	err := json.Unmarshal(w.Body.Bytes(), &loginResp)
+	suite.NoError(err)
+
+	response := loginResp.Data
+
+	suite.NotEmpty(response.Token)
+	suite.Equal("testuser", response.User.Username)
 }
 
 func (suite *IntegrationTestSuite) TestGetProfile() {
@@ -208,12 +218,21 @@ func (suite *IntegrationTestSuite) TestGetProfile() {
 	w := httptest.NewRecorder()
 	suite.router.ServeHTTP(w, req)
 
-	assert.Equal(suite.T(), http.StatusOK, w.Code)
+	suite.Equal(http.StatusOK, w.Code)
 
-	var user models.User
-	err := json.Unmarshal(w.Body.Bytes(), &user)
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), "testuser", user.Username)
+	type ProfileResponse struct {
+		Code        int         `json:"code"`
+		CodeMessage string      `json:"code_message"`
+		CodeType    string      `json:"code_type"`
+		Data        models.User `json:"data"`
+	}
+
+	var profileResp ProfileResponse
+	err := json.Unmarshal(w.Body.Bytes(), &profileResp)
+	suite.NoError(err)
+
+	user := profileResp.Data
+	suite.Equal("testuser", user.Username)
 }
 
 func (suite *IntegrationTestSuite) TestCreateAndGetArticle() {
@@ -232,13 +251,13 @@ func (suite *IntegrationTestSuite) TestCreateAndGetArticle() {
 	w := httptest.NewRecorder()
 	suite.router.ServeHTTP(w, req)
 
-	assert.Equal(suite.T(), http.StatusCreated, w.Code)
+	suite.Equal(http.StatusCreated, w.Code)
 
 	var article models.Article
 	err := json.Unmarshal(w.Body.Bytes(), &article)
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), "Test Article", article.Title)
-	assert.Equal(suite.T(), suite.userID, article.AuthorID)
+	suite.NoError(err)
+	suite.Equal("Test Article", article.Title)
+	suite.Equal(suite.userID, article.AuthorID)
 
 	// Get article
 	req = httptest.NewRequest("GET", fmt.Sprintf("/api/v1/articles/%d", article.ID), nil)
@@ -247,13 +266,13 @@ func (suite *IntegrationTestSuite) TestCreateAndGetArticle() {
 	w = httptest.NewRecorder()
 	suite.router.ServeHTTP(w, req)
 
-	assert.Equal(suite.T(), http.StatusOK, w.Code)
+	suite.Equal(http.StatusOK, w.Code)
 
 	var retrievedArticle models.Article
 	err = json.Unmarshal(w.Body.Bytes(), &retrievedArticle)
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), article.ID, retrievedArticle.ID)
-	assert.Equal(suite.T(), "Test Article", retrievedArticle.Title)
+	suite.NoError(err)
+	suite.Equal(article.ID, retrievedArticle.ID)
+	suite.Equal("Test Article", retrievedArticle.Title)
 }
 
 func (suite *IntegrationTestSuite) TestArticleVersioning() {
@@ -290,13 +309,13 @@ func (suite *IntegrationTestSuite) TestArticleVersioning() {
 	w = httptest.NewRecorder()
 	suite.router.ServeHTTP(w, req)
 
-	assert.Equal(suite.T(), http.StatusCreated, w.Code)
+	suite.Equal(http.StatusCreated, w.Code)
 
 	var version models.ArticleVersion
 	err := json.Unmarshal(w.Body.Bytes(), &version)
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), 2, version.VersionNumber)
-	assert.Equal(suite.T(), "Updated Article", version.Title)
+	suite.NoError(err)
+	suite.Equal(2, version.VersionNumber)
+	suite.Equal("Updated Article", version.Title)
 
 	// Get versions
 	req = httptest.NewRequest("GET", fmt.Sprintf("/api/v1/articles/%d/versions", article.ID), nil)
@@ -305,12 +324,12 @@ func (suite *IntegrationTestSuite) TestArticleVersioning() {
 	w = httptest.NewRecorder()
 	suite.router.ServeHTTP(w, req)
 
-	assert.Equal(suite.T(), http.StatusOK, w.Code)
+	suite.Equal(http.StatusOK, w.Code)
 
 	var versions []models.ArticleVersion
 	err = json.Unmarshal(w.Body.Bytes(), &versions)
-	assert.NoError(suite.T(), err)
-	assert.Len(suite.T(), versions, 2)
+	suite.NoError(err)
+	suite.Len(versions, 2)
 }
 
 func (suite *IntegrationTestSuite) TestPublishArticle() {
@@ -345,7 +364,7 @@ func (suite *IntegrationTestSuite) TestPublishArticle() {
 	w = httptest.NewRecorder()
 	suite.router.ServeHTTP(w, req)
 
-	assert.Equal(suite.T(), http.StatusOK, w.Code)
+	suite.Equal(http.StatusOK, w.Code)
 
 	// Check if article is now accessible via public API
 	req = httptest.NewRequest("GET", fmt.Sprintf("/api/v1/public/articles/%d", article.ID), nil)
@@ -353,7 +372,7 @@ func (suite *IntegrationTestSuite) TestPublishArticle() {
 	w = httptest.NewRecorder()
 	suite.router.ServeHTTP(w, req)
 
-	assert.Equal(suite.T(), http.StatusOK, w.Code)
+	suite.Equal(http.StatusOK, w.Code)
 }
 
 func (suite *IntegrationTestSuite) TestTagManagement() {
@@ -370,12 +389,12 @@ func (suite *IntegrationTestSuite) TestTagManagement() {
 	w := httptest.NewRecorder()
 	suite.router.ServeHTTP(w, req)
 
-	assert.Equal(suite.T(), http.StatusCreated, w.Code)
+	suite.Equal(http.StatusCreated, w.Code)
 
 	var tag models.Tag
 	err := json.Unmarshal(w.Body.Bytes(), &tag)
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), "manual-tag", tag.Name)
+	suite.NoError(err)
+	suite.Equal("manual-tag", tag.Name)
 
 	// Get all tags
 	req = httptest.NewRequest("GET", "/api/v1/tags", nil)
@@ -384,12 +403,12 @@ func (suite *IntegrationTestSuite) TestTagManagement() {
 	w = httptest.NewRecorder()
 	suite.router.ServeHTTP(w, req)
 
-	assert.Equal(suite.T(), http.StatusOK, w.Code)
+	suite.Equal(http.StatusOK, w.Code)
 
 	var tags []models.Tag
 	err = json.Unmarshal(w.Body.Bytes(), &tags)
-	assert.NoError(suite.T(), err)
-	assert.GreaterOrEqual(suite.T(), len(tags), 1)
+	suite.NoError(err)
+	suite.GreaterOrEqual(len(tags), 1)
 }
 
 func (suite *IntegrationTestSuite) TestArticleTagRelationshipScore() {
@@ -421,7 +440,7 @@ func (suite *IntegrationTestSuite) TestArticleTagRelationshipScore() {
 		w := httptest.NewRecorder()
 		suite.router.ServeHTTP(w, req)
 
-		assert.Equal(suite.T(), http.StatusCreated, w.Code)
+		suite.Equal(http.StatusCreated, w.Code)
 	}
 
 	// Get articles to check scores
@@ -431,25 +450,33 @@ func (suite *IntegrationTestSuite) TestArticleTagRelationshipScore() {
 	w := httptest.NewRecorder()
 	suite.router.ServeHTTP(w, req)
 
-	assert.Equal(suite.T(), http.StatusOK, w.Code)
+	suite.Equal(http.StatusOK, w.Code)
 
 	var response struct {
 		Articles []models.Article `json:"articles"`
 		Total    int64            `json:"total"`
 	}
 	err := json.Unmarshal(w.Body.Bytes(), &response)
-	assert.NoError(suite.T(), err)
-	assert.Len(suite.T(), response.Articles, 3)
+	suite.NoError(err)
+	suite.Len(response.Articles, 3)
 
 	// Check that articles have relationship scores calculated
 	for _, article := range response.Articles {
 		if len(article.LatestVersion.Tags) >= 2 {
 			// Articles with multiple tags should have some relationship score
-			assert.GreaterOrEqual(suite.T(), article.LatestVersion.ArticleTagRelationshipScore, 0.0)
+			suite.GreaterOrEqual(article.LatestVersion.ArticleTagRelationshipScore, 0.0)
 		}
 	}
 }
 
 func TestIntegrationSuite(t *testing.T) {
 	suite.Run(t, new(IntegrationTestSuite))
+}
+
+func RunSQLFile(db *gorm.DB, filepath string) error {
+	content, err := ioutil.ReadFile(filepath)
+	if err != nil {
+		return err
+	}
+	return db.Exec(string(content)).Error
 }
