@@ -476,7 +476,6 @@ func (suite *IntegrationTestSuite) TestTagManagement() {
 }
 
 func (suite *IntegrationTestSuite) TestArticleTagRelationshipScore() {
-	// Create articles with common tags to test relationship scoring
 	articles := []models.CreateArticleRequest{
 		{
 			Title:   "Go Programming",
@@ -504,11 +503,10 @@ func (suite *IntegrationTestSuite) TestArticleTagRelationshipScore() {
 		w := httptest.NewRecorder()
 		suite.router.ServeHTTP(w, req)
 
-		suite.Equal(http.StatusCreated, w.Code)
+		suite.Equal(http.StatusOK, w.Code)
 	}
 
-	// Get articles to check scores
-	req := httptest.NewRequest("GET", "/api/v1/articles", nil)
+	req := httptest.NewRequest("GET", "/api/v1/articles?status=draft&author_id=1&page=1&limit=10&sort_by=created_at&sort_order=desc", nil)
 	req.Header.Set("Authorization", "Bearer "+suite.token)
 
 	w := httptest.NewRecorder()
@@ -516,18 +514,33 @@ func (suite *IntegrationTestSuite) TestArticleTagRelationshipScore() {
 
 	suite.Equal(http.StatusOK, w.Code)
 
+	var rawResp struct {
+		Code        int         `json:"code"`
+		CodeMessage string      `json:"code_message"`
+		CodeType    string      `json:"code_type"`
+		Data        interface{} `json:"data"`
+	}
+	err := json.Unmarshal(w.Body.Bytes(), &rawResp)
+	suite.NoError(err)
+
+	if rawResp.Data == nil || rawResp.Data == "" {
+		suite.Fail("Data field is empty or not an object")
+		return
+	}
+
+	dataBytes, err := json.Marshal(rawResp.Data)
+	suite.NoError(err)
+
 	var response struct {
 		Articles []models.Article `json:"articles"`
 		Total    int64            `json:"total"`
 	}
-	err := json.Unmarshal(w.Body.Bytes(), &response)
+	err = json.Unmarshal(dataBytes, &response)
 	suite.NoError(err)
 	suite.Len(response.Articles, 3)
 
-	// Check that articles have relationship scores calculated
 	for _, article := range response.Articles {
 		if len(article.LatestVersion.Tags) >= 2 {
-			// Articles with multiple tags should have some relationship score
 			suite.GreaterOrEqual(article.LatestVersion.ArticleTagRelationshipScore, 0.0)
 		}
 	}
