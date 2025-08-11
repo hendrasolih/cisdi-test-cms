@@ -4,11 +4,11 @@ Aplikasi Content Management System (CMS) berbasis REST API menggunakan Go, Gin, 
 
 ## Fitur Utama
 - Registrasi & Login user (JWT)
-- Manajemen artikel (CRUD)
-- Versi artikel (multi-version, status: draft/published/archived)
+- Manajemen artikel (CRUD, article_tag_relationship_score)
+- Versi artikel (multi-version, status: draft/published/archived_version)
 - Tag artikel (CRUD, trending score)
 - Filtering, sorting, dan paginasi artikel
-- Role-based access (admin, editor, user)
+- Role-based access (admin, editor, writer)
 - Middleware autentikasi dan otorisasi
 - Helper response JSON konsisten
 

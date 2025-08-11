@@ -19,6 +19,11 @@ func NewTagHandler(tagService services.TagService) *TagHandler {
 }
 
 func (h *TagHandler) CreateTag(c *gin.Context) {
+	role, _ := c.Get("role")
+	if role != "admin" {
+		h.Helper.SendUnauthorizedError(c, "Only admin can create tag", h.Helper.EmptyJsonMap())
+		return
+	}
 	var req models.CreateTagRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.Helper.SendBadRequest(c, "Error ", err.Error())
