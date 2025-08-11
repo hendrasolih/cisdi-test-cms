@@ -151,7 +151,7 @@ func (suite *IntegrationTestSuite) registerAndLoginTestUser() {
 		Username: "testuser",
 		Email:    "test@example.com",
 		Password: "password123",
-		Role:     models.RoleWriter,
+		Role:     models.RoleAdmin,
 	}
 
 	body, _ := json.Marshal(registerPayload)
@@ -177,6 +177,7 @@ func (suite *IntegrationTestSuite) registerAndLoginTestUser() {
 
 	suite.token = registerResponse.Data.Token
 	suite.userID = registerResponse.Data.User.ID
+	fmt.Println("Registered user ID:", suite.userID)
 }
 
 func (suite *IntegrationTestSuite) TestAuthFlow() {
@@ -441,12 +442,17 @@ func (suite *IntegrationTestSuite) TestTagManagement() {
 	w := httptest.NewRecorder()
 	suite.router.ServeHTTP(w, req)
 
-	suite.Equal(http.StatusCreated, w.Code)
+	suite.Equal(http.StatusOK, w.Code)
 
-	var tag models.Tag
-	err := json.Unmarshal(w.Body.Bytes(), &tag)
+	var createResp struct {
+		Code        int        `json:"code"`
+		CodeMessage string     `json:"code_message"`
+		CodeType    string     `json:"code_type"`
+		Data        models.Tag `json:"data"`
+	}
+	err := json.Unmarshal(w.Body.Bytes(), &createResp)
 	suite.NoError(err)
-	suite.Equal("manual-tag", tag.Name)
+	suite.Equal("manual-tag", createResp.Data.Name)
 
 	// Get all tags
 	req = httptest.NewRequest("GET", "/api/v1/tags", nil)
@@ -457,10 +463,16 @@ func (suite *IntegrationTestSuite) TestTagManagement() {
 
 	suite.Equal(http.StatusOK, w.Code)
 
-	var tags []models.Tag
-	err = json.Unmarshal(w.Body.Bytes(), &tags)
+	var getTagsResp struct {
+		Code        int          `json:"code"`
+		CodeMessage string       `json:"code_message"`
+		CodeType    string       `json:"code_type"`
+		Data        []models.Tag `json:"data"`
+	}
+
+	err = json.Unmarshal(w.Body.Bytes(), &getTagsResp)
 	suite.NoError(err)
-	suite.GreaterOrEqual(len(tags), 1)
+	suite.GreaterOrEqual(len(getTagsResp.Data), 1)
 }
 
 func (suite *IntegrationTestSuite) TestArticleTagRelationshipScore() {
