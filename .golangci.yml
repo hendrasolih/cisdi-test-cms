@@ -1,0 +1,46 @@
+version: "1"
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - errcheck      # Check unchecked errors
+    - gosimple      # Suggest simplifications
+    - govet         # Go vet
+    - ineffassign   # Detect ineffective assignments
+    - staticcheck   # Advanced static analysis
+    - unused        # Check for unused code
+    - misspell      # Check for misspellings
+    - gofmt         # Check formatting
+    - goimports     # Check imports
+    - gosec         # Security checks
+    - gocritic      # Go critic
+  
+  disable:
+    - typecheck     # Sometimes causes issues in CI
+
+linters-settings:
+  govet:
+    check-shadowing: true
+    settings:
+      printf:
+        funcs:
+          - (github.com/gin-gonic/gin.Context).JSON
+          - (github.com/gin-gonic/gin.Context).String
+  
+  gosec:
+    excludes:
+      - G404  # Use of weak random number generator (math/rand)
+  
+  misspell:
+    locale: US
+
+issues:
+  exclude-rules:
+    # Exclude some linters from running on tests files
+    - path: _test\.go
+      linters:
+        - gosec
+        - errcheck
