@@ -1,63 +1,45 @@
+# Build stage - Using Go 1.24 (match with local development)
 FROM golang:1.24-alpine AS builder
+
+# Install necessary packages
+RUN apk add --no-cache git ca-certificates tzdata
 
 WORKDIR /app
 
-# Install dependencies
-RUN apk add --no-cache git
-
-# Copy go mod files
+# Copy dependency files first for better layer caching
 COPY go.mod go.sum ./
-RUN go mod download
+
+# Download dependencies
+RUN go mod download && go mod verify
 
 # Copy source code
 COPY . .
 
-# Declare build arguments (agar bisa diterima saat build)
-ARG DB_HOST
-ARG DB_NAME
-ARG DB_PASSWORD
-ARG DB_PORT
-ARG DB_SSLMODE
-ARG DB_USER
-ARG JWT_SECRET
-ARG PORT
+# Build the application with optimized flags
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags='-w -s -extldflags "-static"' \
+    -a -installsuffix cgo \
+    -o main .
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+# Final stage - using distroless for better security
+FROM gcr.io/distroless/static-debian11:nonroot
 
-# Final stage
-FROM alpine:latest
-
-# Install ca-certificates for HTTPS requests
-RUN apk --no-cache add ca-certificates
-
-WORKDIR /root/
+# Copy timezone data and CA certificates from builder
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 # Copy binary from builder stage
-COPY --from=builder /app/main .
+COPY --from=builder /app/main /usr/local/bin/main
 
-# Declare same build args here to avoid warning
-ARG DB_HOST
-ARG DB_NAME
-ARG DB_PASSWORD
-ARG DB_PORT
-ARG DB_SSLMODE
-ARG DB_USER
-ARG JWT_SECRET
-ARG PORT
+# Use non-root user (already set in distroless nonroot image)
+# USER nonroot:nonroot
 
-# Set environment variables in the container runtime from build args
-ENV DB_HOST=${DB_HOST}
-ENV DB_NAME=${DB_NAME}
-ENV DB_PASSWORD=${DB_PASSWORD}
-ENV DB_PORT=${DB_PORT}
-ENV DB_SSLMODE=${DB_SSLMODE}
-ENV DB_USER=${DB_USER}
-ENV JWT_SECRET=${JWT_SECRET}
-ENV PORT=${PORT}
+# Expose port
+EXPOSE 8080
 
-# Expose port (default 8080, bisa diubah via build arg PORT)
-EXPOSE ${PORT:-8080}
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD ["/usr/local/bin/main", "--health-check"] || exit 1
 
 # Run the application
-CMD ["./main"]
+ENTRYPOINT ["/usr/local/bin/main"]
