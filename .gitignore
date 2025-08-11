@@ -4,6 +4,7 @@
 *.so
 *.dylib
 *.test
+cisdi-cms*
 
 # Output folders
 /bin/
@@ -31,7 +32,6 @@ Thumbs.db
 
 # Environment files
 .env
-.env.*
 
 # Logs
 *.log
