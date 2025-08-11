@@ -1,17 +1,16 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15-alpine
     container_name: cms_postgres
     environment:
       POSTGRES_DB: cms_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./migration/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     networks:
       - cms_network
 
@@ -21,8 +20,8 @@ services:
       args:
         DB_HOST: postgres
         DB_PORT: 5432
-        DB_USER: postgres
-        DB_PASSWORD: password
+        DB_USER: myuser
+        DB_PASSWORD: mypassword
         DB_NAME: cms_db
         DB_SSLMODE: disable
         JWT_SECRET: your-super-secret-jwt-key-change-in-production
@@ -31,8 +30,8 @@ services:
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: postgres
-      DB_PASSWORD: password
+      DB_USER: myuser
+      DB_PASSWORD: mypassword
       DB_NAME: cms_db
       DB_SSLMODE: disable
       JWT_SECRET: your-super-secret-jwt-key-change-in-production

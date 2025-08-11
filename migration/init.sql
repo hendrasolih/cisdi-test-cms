@@ -6,10 +6,9 @@ CREATE TABLE users (
   password VARCHAR(255) NOT NULL, -- harus berisi hash password, bukan plain text
   role VARCHAR(50) DEFAULT 'writer',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP NULL
 );
-ALTER TABLE users ADD COLUMN deleted_at TIMESTAMP NULL;
-CREATE INDEX idx_users_deleted_at ON users (deleted_at);
 
 
 -- Tabel Articles
@@ -20,9 +19,9 @@ CREATE TABLE articles (
   published_version_id INTEGER,
   latest_version_id INTEGER NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP NULL
 );
-ALTER TABLE articles ADD COLUMN deleted_at TIMESTAMP NULL;
 
 -- Tabel Article Versions
 CREATE TABLE article_versions (
@@ -35,9 +34,9 @@ CREATE TABLE article_versions (
   article_tag_relationship_score DECIMAL(6,2) DEFAULT 0,
   published_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP NULL
 );
-ALTER TABLE article_versions ADD COLUMN deleted_at TIMESTAMP NULL;
 
 -- Tabel Tags
 CREATE TABLE tags (
@@ -46,9 +45,9 @@ CREATE TABLE tags (
   usage_count INTEGER DEFAULT 0, -- perlu dijaga konsistensinya dengan trigger
   trending_score DECIMAL(10,6) DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP NULL
 );
-ALTER TABLE tags ADD COLUMN deleted_at TIMESTAMP NULL;
 
 -- Many-to-many relationship
 CREATE TABLE article_version_tags (

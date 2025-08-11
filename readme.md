@@ -40,6 +40,10 @@ Aplikasi Content Management System (CMS) berbasis REST API menggunakan Go, Gin, 
    ```bash
    go run main.go
    ```
+5. Jalankan via docker-compose.yml
+  ```bash
+  docker compose up -d --build
+  ```
 
 ## Endpoint API
 ### Auth
