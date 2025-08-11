@@ -309,8 +309,17 @@ func (suite *IntegrationTestSuite) TestArticleVersioning() {
 	w := httptest.NewRecorder()
 	suite.router.ServeHTTP(w, req)
 
-	var article models.Article
-	json.Unmarshal(w.Body.Bytes(), &article)
+	type CreateArticleResponse struct {
+		Code        int            `json:"code"`
+		CodeMessage string         `json:"code_message"`
+		CodeType    string         `json:"code_type"`
+		Data        models.Article `json:"data"`
+	}
+
+	var createResp CreateArticleResponse
+	err := json.Unmarshal(w.Body.Bytes(), &createResp)
+	suite.NoError(err)
+	article := createResp.Data
 
 	// Create new version
 	versionPayload := models.CreateArticleVersionRequest{
@@ -327,11 +336,19 @@ func (suite *IntegrationTestSuite) TestArticleVersioning() {
 	w = httptest.NewRecorder()
 	suite.router.ServeHTTP(w, req)
 
-	suite.Equal(http.StatusCreated, w.Code)
+	type CreateVersionResponse struct {
+		Code        int                   `json:"code"`
+		CodeMessage string                `json:"code_message"`
+		CodeType    string                `json:"code_type"`
+		Data        models.ArticleVersion `json:"data"`
+	}
 
-	var version models.ArticleVersion
-	err := json.Unmarshal(w.Body.Bytes(), &version)
+	var versionResp CreateVersionResponse
+	err = json.Unmarshal(w.Body.Bytes(), &versionResp)
 	suite.NoError(err)
+	version := versionResp.Data
+
+	suite.Equal(http.StatusOK, w.Code)
 	suite.Equal(2, version.VersionNumber)
 	suite.Equal("Updated Article", version.Title)
 
@@ -342,11 +359,19 @@ func (suite *IntegrationTestSuite) TestArticleVersioning() {
 	w = httptest.NewRecorder()
 	suite.router.ServeHTTP(w, req)
 
-	suite.Equal(http.StatusOK, w.Code)
+	type GetVersionsResponse struct {
+		Code        int                     `json:"code"`
+		CodeMessage string                  `json:"code_message"`
+		CodeType    string                  `json:"code_type"`
+		Data        []models.ArticleVersion `json:"data"`
+	}
 
-	var versions []models.ArticleVersion
-	err = json.Unmarshal(w.Body.Bytes(), &versions)
+	var versionsResp GetVersionsResponse
+	err = json.Unmarshal(w.Body.Bytes(), &versionsResp)
 	suite.NoError(err)
+	versions := versionsResp.Data
+
+	suite.Equal(http.StatusOK, w.Code)
 	suite.Len(versions, 2)
 }
 
