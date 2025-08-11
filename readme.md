@@ -183,7 +183,6 @@ go test -cover ./...
 | **Admin** | Semua artikel | Semua versi | Semua tag | Full access |
 | **Editor** | Semua artikel | Semua versi | Semua tag | Full access |
 | **Writer** | Artikel sendiri | Versi artikel sendiri | Read-only | Limited |
-| **User** | Artikel published | Versi published | Read-only | Read-only |
 
 ## 🏗️ Arsitektur
 
