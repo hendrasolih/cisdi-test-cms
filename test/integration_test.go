@@ -251,11 +251,20 @@ func (suite *IntegrationTestSuite) TestCreateAndGetArticle() {
 	w := httptest.NewRecorder()
 	suite.router.ServeHTTP(w, req)
 
-	suite.Equal(http.StatusCreated, w.Code)
+	suite.Equal(http.StatusOK, w.Code)
 
-	var article models.Article
-	err := json.Unmarshal(w.Body.Bytes(), &article)
+	type CreateArticleResponse struct {
+		Code        int            `json:"code"`
+		CodeMessage string         `json:"code_message"`
+		CodeType    string         `json:"code_type"`
+		Data        models.Article `json:"data"`
+	}
+
+	var createResp CreateArticleResponse
+	err := json.Unmarshal(w.Body.Bytes(), &createResp)
 	suite.NoError(err)
+	article := createResp.Data
+
 	suite.Equal("Test Article", article.Title)
 	suite.Equal(suite.userID, article.AuthorID)
 
@@ -268,9 +277,18 @@ func (suite *IntegrationTestSuite) TestCreateAndGetArticle() {
 
 	suite.Equal(http.StatusOK, w.Code)
 
-	var retrievedArticle models.Article
-	err = json.Unmarshal(w.Body.Bytes(), &retrievedArticle)
+	type GetArticleResponse struct {
+		Code        int            `json:"code"`
+		CodeMessage string         `json:"code_message"`
+		CodeType    string         `json:"code_type"`
+		Data        models.Article `json:"data"`
+	}
+
+	var getResp GetArticleResponse
+	err = json.Unmarshal(w.Body.Bytes(), &getResp)
 	suite.NoError(err)
+	retrievedArticle := getResp.Data
+
 	suite.Equal(article.ID, retrievedArticle.ID)
 	suite.Equal("Test Article", retrievedArticle.Title)
 }
