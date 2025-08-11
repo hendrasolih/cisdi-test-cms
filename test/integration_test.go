@@ -391,8 +391,17 @@ func (suite *IntegrationTestSuite) TestPublishArticle() {
 	w := httptest.NewRecorder()
 	suite.router.ServeHTTP(w, req)
 
-	var article models.Article
-	json.Unmarshal(w.Body.Bytes(), &article)
+	type CreateArticleResponse struct {
+		Code        int            `json:"code"`
+		CodeMessage string         `json:"code_message"`
+		CodeType    string         `json:"code_type"`
+		Data        models.Article `json:"data"`
+	}
+
+	var createResp CreateArticleResponse
+	err := json.Unmarshal(w.Body.Bytes(), &createResp)
+	suite.NoError(err)
+	article := createResp.Data
 
 	// Publish version
 	publishPayload := models.UpdateVersionStatusRequest{
