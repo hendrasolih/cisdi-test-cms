@@ -42,3 +42,6 @@ coverage/
 
 # Misc
 config.json
+
+# Docker files
+docker-compose.yml

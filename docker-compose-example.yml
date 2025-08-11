@@ -16,7 +16,17 @@ services:
       - cms_network
 
   app:
-    build: .
+    build:
+      context: .
+      args:
+        DB_HOST: postgres
+        DB_PORT: 5432
+        DB_USER: postgres
+        DB_PASSWORD: password
+        DB_NAME: cms_db
+        DB_SSLMODE: disable
+        JWT_SECRET: your-super-secret-jwt-key-change-in-production
+        PORT: 8080
     container_name: cms_api
     environment:
       DB_HOST: postgres
